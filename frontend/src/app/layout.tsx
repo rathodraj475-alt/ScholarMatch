@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-    title: "ScholarMatch | Semantic Research Paper Recommendation Engine",
+    title: "ScholarMatch ",
     description: "Enterprise NLP research discovery engine using 384-dimensional dense vectors and Neon pgvector.",
 };
 
