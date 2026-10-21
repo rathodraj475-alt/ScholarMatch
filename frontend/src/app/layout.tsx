@@ -1,10 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 
-export const metadata: Metadata = {
-    title: "ScholarMatch ",
-    description: "Enterprise NLP research discovery engine using 384-dimensional dense vectors and Neon pgvector.",
-};
+
 
 export const metadata: Metadata = {
     title: "ScholarMatch",
