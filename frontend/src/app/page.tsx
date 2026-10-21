@@ -56,8 +56,6 @@ export default function ScholarMatchApp() {
   const [errorMsg, setErrorMsg] = useState("");
   const [activeModalPaper, setActiveModalPaper] = useState<PaperResult | null>(null);
 
-  const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
-
   const handleRecommend = async (e?: React.FormEvent, directQuery?: string) => {
     if (e) e.preventDefault();
     const effectiveQuery = directQuery !== undefined ? directQuery : queryText;
@@ -69,21 +67,24 @@ export default function ScholarMatchApp() {
     setLoading(true);
 
     try {
-      const url = new URL(`${backendUrl}/api/recommend`);
+      // Build query parameters for the relative URL
+      const params = new URLSearchParams();
+
       if (mode === "text") {
-        url.searchParams.append("query_text", effectiveQuery.trim());
+        params.append("query_text", effectiveQuery.trim());
       } else {
-        url.searchParams.append("arxiv_id", arxivId.trim());
+        params.append("arxiv_id", arxivId.trim());
       }
 
       if (selectedCategory !== "ALL") {
-        url.searchParams.append("category_filter", selectedCategory);
+        params.append("category_filter", selectedCategory);
       }
 
       // Request 42 results (6 Top + 36 Extended)
-      url.searchParams.append("limit", "42");
+      params.append("limit", "42");
 
-      const res = await fetch(url.toString(), {
+      // Use a relative path so next.config.mjs proxies it directly to Render
+      const res = await fetch(`/api/recommend?${params.toString()}`, {
         method: "POST",
         headers: {
           "Accept": "application/json",
@@ -176,8 +177,8 @@ export default function ScholarMatchApp() {
                 type="button"
                 onClick={() => { setMode("text"); setErrorMsg(""); }}
                 className={`px-4 py-2 rounded-lg transition-all flex items-center gap-2 ${mode === "text"
-                    ? "bg-indigo-600 text-white shadow-sm font-semibold"
-                    : "text-slate-400 hover:text-slate-200"
+                  ? "bg-indigo-600 text-white shadow-sm font-semibold"
+                  : "text-slate-400 hover:text-slate-200"
                   }`}
               >
                 <FileText className="w-3.5 h-3.5" /> Abstract / Concept Query
@@ -186,8 +187,8 @@ export default function ScholarMatchApp() {
                 type="button"
                 onClick={() => { setMode("id"); setErrorMsg(""); }}
                 className={`px-4 py-2 rounded-lg transition-all flex items-center gap-2 ${mode === "id"
-                    ? "bg-indigo-600 text-white shadow-sm font-semibold"
-                    : "text-slate-400 hover:text-slate-200"
+                  ? "bg-indigo-600 text-white shadow-sm font-semibold"
+                  : "text-slate-400 hover:text-slate-200"
                   }`}
               >
                 <Hash className="w-3.5 h-3.5" /> Direct arXiv ID
@@ -239,8 +240,8 @@ export default function ScholarMatchApp() {
                     type="button"
                     onClick={() => setSelectedCategory(cat.code)}
                     className={`text-xs px-3.5 py-1.5 rounded-lg border transition-all whitespace-nowrap ${selectedCategory === cat.code
-                        ? "bg-indigo-600 text-white border-indigo-500 shadow-sm"
-                        : "bg-slate-950/60 text-slate-400 border-slate-800 hover:border-slate-700 hover:text-slate-200"
+                      ? "bg-indigo-600 text-white border-indigo-500 shadow-sm"
+                      : "bg-slate-950/60 text-slate-400 border-slate-800 hover:border-slate-700 hover:text-slate-200"
                       }`}
                   >
                     {cat.label}
