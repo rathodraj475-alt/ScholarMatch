@@ -4,18 +4,18 @@ from typing import Optional
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
-from sentence_transformers import SentenceTransformer
+from fastembed import TextEmbedding
 from app.database import get_db
 
-# Global holder for model
 model = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global model
-    print("Binding port complete. Loading SentenceTransformer model in background...")
-    model = SentenceTransformer("all-MiniLM-L6-v2")
-    print("SentenceTransformer model loaded and ready.")
+    print("Binding port complete. Loading lightweight FastEmbed model...")
+    # FastEmbed uses ONNX, bypassing the massive PyTorch memory footprint
+    model = TextEmbedding(model_name="sentence-transformers/all-MiniLM-L6-v2")
+    print("FastEmbed model loaded and ready.")
     yield
 
 app = FastAPI(title="ScholarMatch Backend", lifespan=lifespan)
@@ -32,7 +32,7 @@ app.add_middleware(
 def get_model():
     global model
     if model is None:
-        model = SentenceTransformer("all-MiniLM-L6-v2")
+        model = TextEmbedding(model_name="sentence-transformers/all-MiniLM-L6-v2")
     return model
 
 @app.get("/health")
@@ -68,7 +68,7 @@ def recommend_papers(
     limit: int = Query(42, ge=1, le=100),
     db=Depends(get_db)
 ):
-    transformer_model = get_model()
+    embedder = get_model()
 
     if query_text and not arxiv_id:
         if re.search(r'\b\d{4}\.\d{4,5}(v\d+)?\b', query_text):
@@ -93,11 +93,13 @@ def recommend_papers(
             
             target_title = res[0][0]
             target_abstract = res[0][1]
-
-            emb = transformer_model.encode(f"{target_title}. {target_abstract}").tolist()
+            text_to_embed = f"{target_title}. {target_abstract}"
+            
+            # FastEmbed requires a list of strings and returns a generator
+            emb = list(embedder.embed([text_to_embed]))[0].tolist()
             query_vector = f"[{','.join(map(str, emb))}]"
         else:
-            emb = transformer_model.encode(query_text).tolist()
+            emb = list(embedder.embed([query_text]))[0].tolist()
             query_vector = f"[{','.join(map(str, emb))}]"
 
         if category_filter and category_filter != "ALL":
@@ -148,8 +150,8 @@ def recommend_papers(
     except Exception as e:
         print(f"[ERROR] /api/recommend: {e}")
         raise HTTPException(status_code=500, detail=f"Vector search failed: {str(e)}")
-        
-        if __name__ == "__main__":
-           import uvicorn
-           port = int(os.environ.get("PORT", 8000))
-           uvicorn.run("app.main:app", host="0.0.0.0", port=port)
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("app.main:app", host="0.0.0.0", port=port)
