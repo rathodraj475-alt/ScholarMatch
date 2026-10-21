@@ -1,14 +1,25 @@
 import os
 import re
 from typing import Optional
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sentence_transformers import SentenceTransformer
 from app.database import get_db
 
-app = FastAPI(title="ScholarMatch Backend")
+# Global holder for model
+model = None
 
-# Allow all origins so frontend on port 3000 / 3001 never gets blocked
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global model
+    print("Binding port complete. Loading SentenceTransformer model in background...")
+    model = SentenceTransformer("all-MiniLM-L6-v2")
+    print("SentenceTransformer model loaded and ready.")
+    yield
+
+app = FastAPI(title="ScholarMatch Backend", lifespan=lifespan)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -18,13 +29,19 @@ app.add_middleware(
     expose_headers=["*"],
 )
 
-print("Loading NLP Model (all-MiniLM-L6-v2)...")
-model = SentenceTransformer("all-MiniLM-L6-v2")
-print("Model ready.")
+def get_model():
+    global model
+    if model is None:
+        model = SentenceTransformer("all-MiniLM-L6-v2")
+    return model
 
 @app.get("/health")
 def health_check():
-    return {"status": "healthy", "service": "ScholarMatch Backend"}
+    return {
+        "status": "healthy",
+        "service": "ScholarMatch Backend",
+        "model_loaded": model is not None
+    }
 
 @app.get("/api/categories")
 def get_categories(db=Depends(get_db)):
@@ -48,10 +65,11 @@ def recommend_papers(
     query_text: Optional[str] = Query(None),
     arxiv_id: Optional[str] = Query(None),
     category_filter: Optional[str] = Query(None),
-    limit: int = Query(15, ge=1, le=100),
+    limit: int = Query(42, ge=1, le=100),
     db=Depends(get_db)
 ):
-    # Smart routing: If a user pastes an arXiv ID into the Abstract search box, detect and fix it.
+    transformer_model = get_model()
+
     if query_text and not arxiv_id:
         if re.search(r'\b\d{4}\.\d{4,5}(v\d+)?\b', query_text):
             match = re.search(r'\b\d{4}\.\d{4,5}(v\d+)?\b', query_text)
@@ -65,9 +83,7 @@ def recommend_papers(
         sql_params = {}
         where_conditions = []
 
-        # 1. Resolve query vector safely
         if arxiv_id:
-            # Use LIKE to match IDs even if user forgets the version tag
             res = db.run(
                 "SELECT title, abstract, arxiv_id FROM documents WHERE arxiv_id LIKE :aid LIMIT 1",
                 aid=f"%{arxiv_id.strip()}%"
@@ -75,25 +91,21 @@ def recommend_papers(
             if not res:
                 raise HTTPException(status_code=404, detail=f"arXiv ID '{arxiv_id}' not found in database.")
             
-            # Re-encode the exact text to maintain flawless 384-D precision
             target_title = res[0][0]
             target_abstract = res[0][1]
 
-            emb = model.encode(f"{target_title}. {target_abstract}").tolist()
+            emb = transformer_model.encode(f"{target_title}. {target_abstract}").tolist()
             query_vector = f"[{','.join(map(str, emb))}]"
-            
         else:
-            emb = model.encode(query_text).tolist()
+            emb = transformer_model.encode(query_text).tolist()
             query_vector = f"[{','.join(map(str, emb))}]"
 
-        # 2. Add optional category filter
         if category_filter and category_filter != "ALL":
             where_conditions.append("category_code = :cat")
             sql_params["cat"] = category_filter
 
         where_stmt = ("WHERE " + " AND ".join(where_conditions)) if where_conditions else ""
 
-        # 3. Execute HNSW Vector Search
         sql_params["q_vec"] = query_vector
         sql_params["lim"] = limit
 
@@ -136,3 +148,8 @@ def recommend_papers(
     except Exception as e:
         print(f"[ERROR] /api/recommend: {e}")
         raise HTTPException(status_code=500, detail=f"Vector search failed: {str(e)}")
+        
+        if __name__ == "__main__":
+           import uvicorn
+           port = int(os.environ.get("PORT", 8000))
+           uvicorn.run("app.main:app", host="0.0.0.0", port=port)
