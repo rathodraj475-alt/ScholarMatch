@@ -6,6 +6,14 @@ export const metadata: Metadata = {
     description: "Enterprise NLP research discovery engine using 384-dimensional dense vectors and Neon pgvector.",
 };
 
+export const metadata: Metadata = {
+    title: "ScholarMatch",
+    description: "Discover Research Beyond Keywords",
+    icons: {
+        icon: "/icon.png", // Change to "/favicon.ico" if you used that file extension
+    },
+};
+
 export default function RootLayout({
     children,
 }: {
